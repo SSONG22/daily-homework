@@ -129,7 +129,7 @@ async function saveToNotion(problems) {
       ...p,
       kDifficulty: difficulty === 1 ? "Easy" : "Medium",
       url: `https://leetcode.com/problems/${p.slug}/`,
-      tag: rotationTag
+      tag: rotationTag ? { select: { name: rotationTag } } : undefined
     }));
 
     await sendSlack(selected);
