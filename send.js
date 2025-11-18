@@ -76,9 +76,6 @@ async function saveToNotion(problems) {
           Url: {
             url: p.url
           },
-          Korean: {
-            url: p.krUrl
-          },
           Tag: {
             select: {name: p.tag}
           },
@@ -110,12 +107,10 @@ async function saveToNotion(problems) {
       count
     });
 
-    // 한국어 링크 추가
     selected = selected.map(p => ({
       ...p,
       kDifficulty: difficulty === 1 ? "Easy" : "Medium",
       url: `https://leetcode.com/problems/${p.slug}/`,
-      krUrl: `https://leetcode.cn/problems/${p.slug}/description/?lang=ko`, // 한국어 버전
       tag: rotationTag
     }));
 
