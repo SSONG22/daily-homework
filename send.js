@@ -27,7 +27,6 @@ function pickProblems(all, {difficulty, tag, count}) {
   );
 
   if (filtered.length < count) {
-    // 태그 매칭 실패 시 태그 무시하고 난이도 기준으로만 선택
     const fallback = all.filter(p => p.level === difficulty);
     return fallback.sort(() => 0.5 - Math.random()).slice(0, count);
   }
@@ -59,6 +58,55 @@ async function sendSlack(problems) {
   }
 }
 
+// Notion DB의 Tag select 옵션 확인 & 필요 시 추가
+async function ensureTagOption(tag) {
+  const token = process.env.NOTION_TOKEN;
+  const dbId = process.env.NOTION_DATABASE_ID;
+
+  const dbRes = await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Notion-Version": "2022-06-28"
+    }
+  });
+  const dbData = await dbRes.json();
+  const tagColumn = dbData.properties.Tag;
+
+  if (!tagColumn || tagColumn.type !== "select") {
+    throw new Error("Tag 컬럼이 존재하지 않거나 select 타입이 아님");
+  }
+
+  const options = tagColumn.select.options.map(o => o.name);
+  if (!options.includes(tag)) {
+    // 새 옵션 추가
+    const updatedOptions = [...options, tag].map(name => ({ name }));
+
+    const patchRes = await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+      method: "PATCH",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+      },
+      body: JSON.stringify({
+        properties: {
+          Tag: {
+            select: { options: updatedOptions }
+          }
+        }
+      })
+    });
+
+    const patchData = await patchRes.json();
+    if (!patchRes.ok) {
+      console.error("Tag 옵션 추가 실패:", patchData);
+      throw new Error(`Tag 옵션 추가 실패: ${patchData.message || JSON.stringify(patchData)}`);
+    } else {
+      console.log("Tag 옵션 추가 성공:", tag);
+    }
+  }
+}
+
 async function saveToNotion(problems) {
   const token = process.env.NOTION_TOKEN;
   const dbId = process.env.NOTION_DATABASE_ID;
@@ -66,6 +114,20 @@ async function saveToNotion(problems) {
   if (!token || !dbId) throw new Error("NOTION_TOKEN 또는 NOTION_DATABASE_ID 환경변수 없음");
 
   for (const p of problems) {
+    // Tag 옵션 보장
+    await ensureTagOption(p.tag);
+
+    const body = {
+      parent: { database_id: dbId },
+      properties: {
+        Name: { title: [{ text: { content: p.title } }] },
+        Difficulty: { select: { name: p.kDifficulty } },
+        Url: { url: p.url },
+        Tag: { select: { name: p.tag } },
+        Date: { date: { start: new Date().toISOString() } }
+      }
+    };
+
     const res = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
       headers: {
@@ -73,30 +135,10 @@ async function saveToNotion(problems) {
         "Content-Type": "application/json",
         "Notion-Version": "2022-06-28"
       },
-      body: JSON.stringify({
-        parent: { database_id: dbId },
-        properties: {
-          Name: {
-            title: [{ text: { content: p.title } }]
-          },
-          Difficulty: {
-            select: { name: p.kDifficulty }
-          },
-          Url: {
-            url: p.url
-          },
-          Tag: {
-            select: { name: p.tag }
-          },
-          Date: {
-            date: { start: new Date().toISOString() }
-          }
-        }
-      })
+      body: JSON.stringify(body)
     });
 
     const data = await res.json();
-
     if (!res.ok) {
       console.error("Notion API Error:", data);
       throw new Error(`Notion 기록 실패: ${data.message || JSON.stringify(data)}`);
@@ -109,27 +151,22 @@ async function saveToNotion(problems) {
 (async () => {
   try {
     const today = new Date();
-    const dayIndex = Math.floor((today - new Date("2025-11-19")) / 86400000); // 시작 기준일 자유 설정
+    const dayIndex = Math.floor((today - new Date("2025-11-19")) / 86400000);
 
     const isFirst10 = dayIndex < 10;
     const rotationTag = getRotationTag(dayIndex);
 
-    const difficulty = isFirst10 ? 1 : 2; // 1=Easy, 2=Medium
+    const difficulty = isFirst10 ? 1 : 2;
     const count = isFirst10 ? 2 : 1;
 
     const all = await loadLeetCodeProblems();
-
-    let selected = pickProblems(all, {
-      difficulty,
-      tag: rotationTag,
-      count
-    });
+    let selected = pickProblems(all, { difficulty, tag: rotationTag, count });
 
     selected = selected.map(p => ({
       ...p,
       kDifficulty: difficulty === 1 ? "Easy" : "Medium",
       url: `https://leetcode.com/problems/${p.slug}/`,
-      tag: rotationTag ? { select: { name: rotationTag } } : undefined
+      tag: rotationTag
     }));
 
     await sendSlack(selected);
@@ -138,6 +175,6 @@ async function saveToNotion(problems) {
     console.log("Done!", selected);
   } catch (err) {
     console.error("Error:", err);
-    process.exit(1); // GitHub Actions에서도 실패로 표시
+    process.exit(1);
   }
 })();
