@@ -58,7 +58,7 @@ async function sendSlack(problems) {
   }
 }
 
-// Notion DB의 Tag select 옵션 확인 & 필요 시 추가
+// Notion DB Tag 옵션 확인 + 없으면 자동 생성
 async function ensureTagOption(tag) {
   const token = process.env.NOTION_TOKEN;
   const dbId = process.env.NOTION_DATABASE_ID;
@@ -69,6 +69,7 @@ async function ensureTagOption(tag) {
       "Notion-Version": "2022-06-28"
     }
   });
+
   const dbData = await dbRes.json();
   const tagColumn = dbData.properties.Tag;
 
@@ -76,39 +77,36 @@ async function ensureTagOption(tag) {
     throw new Error("Tag 컬럼이 존재하지 않거나 select 타입이 아님");
   }
 
-    const existingOptions = tagColumn.select.options; // [{id, name, color}, ...]
-    const optionNames = existingOptions.map(o => o.name);
-    
-    if (!optionNames.includes(tag)) {
-      // 새로운 옵션 객체 추가
-      const updatedOptions = [
-        ...existingOptions,
-        { name: tag, color: "default" } // 새 옵션은 name + color만 지정 가능
-      ];
-    
-      const patchRes = await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
-        method: "PATCH",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-          "Notion-Version": "2022-06-28"
-        },
-        body: JSON.stringify({
-          properties: {
-            Tag: {
-              select: { options: updatedOptions }
-            }
-          }
-        })
-      });
-    
-      const patchData = await patchRes.json();
-      if (!patchRes.ok) {
-        console.error("Tag 옵션 추가 실패:", patchData);
-        throw new Error(`Tag 옵션 추가 실패: ${patchData.message || JSON.stringify(patchData)}`);
-      } else {
-        console.log("Tag 옵션 추가 성공:", tag);
-      }
+  const existingOptions = tagColumn.select.options; // [{id, name, color}, ...]
+  const optionNames = existingOptions.map(o => o.name);
+
+  if (!optionNames.includes(tag)) {
+    // 새 옵션 추가
+    const updatedOptions = [
+      ...existingOptions,
+      { name: tag, color: "default" } // id는 Notion에서 자동 생성
+    ];
+
+    const patchRes = await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+      method: "PATCH",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+      },
+      body: JSON.stringify({
+        properties: {
+          Tag: { select: { options: updatedOptions } }
+        }
+      })
+    });
+
+    const patchData = await patchRes.json();
+    if (!patchRes.ok) {
+      console.error("Tag 옵션 추가 실패:", patchData);
+      throw new Error(`Tag 옵션 추가 실패: ${patchData.message || JSON.stringify(patchData)}`);
+    } else {
+      console.log("Tag 옵션 추가 성공:", tag);
     }
   }
 }
@@ -120,7 +118,7 @@ async function saveToNotion(problems) {
   if (!token || !dbId) throw new Error("NOTION_TOKEN 또는 NOTION_DATABASE_ID 환경변수 없음");
 
   for (const p of problems) {
-    // Tag 옵션 보장
+    // Tag 옵션 존재 확인 + 없으면 생성
     await ensureTagOption(p.tag);
 
     const body = {
@@ -162,7 +160,7 @@ async function saveToNotion(problems) {
     const isFirst10 = dayIndex < 10;
     const rotationTag = getRotationTag(dayIndex);
 
-    const difficulty = isFirst10 ? 1 : 2;
+    const difficulty = isFirst10 ? 1 : 2; // 1=Easy, 2=Medium
     const count = isFirst10 ? 2 : 1;
 
     const all = await loadLeetCodeProblems();
@@ -181,6 +179,6 @@ async function saveToNotion(problems) {
     console.log("Done!", selected);
   } catch (err) {
     console.error("Error:", err);
-    process.exit(1);
+    process.exit(1); // GitHub Actions 실패 처리
   }
 })();
