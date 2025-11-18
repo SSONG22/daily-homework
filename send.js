@@ -4,6 +4,9 @@ const fetch = require("node-fetch");
 const ROTATION = ["bfs", "dp", "graph", "tree", "greedy", "two-pointers"];
 
 function getRotationTag(todayIndex) {
+  if (todayIndex < 0) {
+    todayIndex = todayIndex * -1;
+  }
   return ROTATION[todayIndex % ROTATION.length];
 }
 
