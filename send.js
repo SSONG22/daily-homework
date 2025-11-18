@@ -37,6 +37,8 @@ function pickProblems(all, {difficulty, tag, count}) {
 
 async function sendSlack(problems) {
   const webhook = process.env.SLACK_WEBHOOK_URL;
+  if (!webhook) throw new Error("SLACK_WEBHOOK_URL 환경변수 없음");
+
   const lines = problems.map(p =>
     `• *${p.title}* (${p.kDifficulty})\n${p.url}`
   );
@@ -45,19 +47,26 @@ async function sendSlack(problems) {
     text: `📘 *오늘의 리트코드 문제 (${problems.length}문제)*\n\n${lines.join("\n\n")}`
   };
 
-  await fetch(webhook, {
+  const res = await fetch(webhook, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify(message)
   });
+
+  if (!res.ok) {
+    const errData = await res.text();
+    throw new Error(`Slack 전송 실패: ${res.status} ${res.statusText} - ${errData}`);
+  }
 }
 
 async function saveToNotion(problems) {
   const token = process.env.NOTION_TOKEN;
   const dbId = process.env.NOTION_DATABASE_ID;
 
+  if (!token || !dbId) throw new Error("NOTION_TOKEN 또는 NOTION_DATABASE_ID 환경변수 없음");
+
   for (const p of problems) {
-    await fetch("https://api.notion.com/v1/pages", {
+    const res = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
@@ -65,26 +74,35 @@ async function saveToNotion(problems) {
         "Notion-Version": "2022-06-28"
       },
       body: JSON.stringify({
-        parent: {database_id: dbId},
+        parent: { database_id: dbId },
         properties: {
           Name: {
-            title: [{text: {content: p.title}}]
+            title: [{ text: { content: p.title } }]
           },
           Difficulty: {
-            select: {name: p.kDifficulty}
+            select: { name: p.kDifficulty }
           },
           Url: {
             url: p.url
           },
           Tag: {
-            select: {name: p.tag}
+            select: { name: p.tag }
           },
           Date: {
-            date: {start: new Date().toISOString()}
+            date: { start: new Date().toISOString() }
           }
         }
       })
     });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error("Notion API Error:", data);
+      throw new Error(`Notion 기록 실패: ${data.message || JSON.stringify(data)}`);
+    } else {
+      console.log("Notion 기록 성공:", data.id);
+    }
   }
 }
 
@@ -120,5 +138,6 @@ async function saveToNotion(problems) {
     console.log("Done!", selected);
   } catch (err) {
     console.error("Error:", err);
+    process.exit(1); // GitHub Actions에서도 실패로 표시
   }
 })();
