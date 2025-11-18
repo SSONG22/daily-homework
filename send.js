@@ -76,33 +76,39 @@ async function ensureTagOption(tag) {
     throw new Error("Tag 컬럼이 존재하지 않거나 select 타입이 아님");
   }
 
-  const options = tagColumn.select.options.map(o => o.name);
-  if (!options.includes(tag)) {
-    // 새 옵션 추가
-    const updatedOptions = [...options, tag].map(name => ({ name }));
-
-    const patchRes = await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
-      method: "PATCH",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28"
-      },
-      body: JSON.stringify({
-        properties: {
-          Tag: {
-            select: { options: updatedOptions }
+    const existingOptions = tagColumn.select.options; // [{id, name, color}, ...]
+    const optionNames = existingOptions.map(o => o.name);
+    
+    if (!optionNames.includes(tag)) {
+      // 새로운 옵션 객체 추가
+      const updatedOptions = [
+        ...existingOptions,
+        { name: tag, color: "default" } // 새 옵션은 name + color만 지정 가능
+      ];
+    
+      const patchRes = await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+        method: "PATCH",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Notion-Version": "2022-06-28"
+        },
+        body: JSON.stringify({
+          properties: {
+            Tag: {
+              select: { options: updatedOptions }
+            }
           }
-        }
-      })
-    });
-
-    const patchData = await patchRes.json();
-    if (!patchRes.ok) {
-      console.error("Tag 옵션 추가 실패:", patchData);
-      throw new Error(`Tag 옵션 추가 실패: ${patchData.message || JSON.stringify(patchData)}`);
-    } else {
-      console.log("Tag 옵션 추가 성공:", tag);
+        })
+      });
+    
+      const patchData = await patchRes.json();
+      if (!patchRes.ok) {
+        console.error("Tag 옵션 추가 실패:", patchData);
+        throw new Error(`Tag 옵션 추가 실패: ${patchData.message || JSON.stringify(patchData)}`);
+      } else {
+        console.log("Tag 옵션 추가 성공:", tag);
+      }
     }
   }
 }
