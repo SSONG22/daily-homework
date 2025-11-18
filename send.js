@@ -94,7 +94,7 @@ async function saveToNotion(problems) {
 (async () => {
   try {
     const today = new Date();
-    const dayIndex = Math.floor((today - new Date("2025-11-18")) / 86400000); // 시작 기준일 자유 설정
+    const dayIndex = Math.floor((today - new Date("2025-11-19")) / 86400000); // 시작 기준일 자유 설정
 
     const isFirst10 = dayIndex < 10;
     const rotationTag = getRotationTag(dayIndex);
