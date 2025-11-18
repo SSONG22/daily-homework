@@ -176,7 +176,7 @@ async function saveToNotion(problems) {
       tag: rotationTag
     }));
 
-    await sendSlack(selected);
+    // await sendSlack(selected);
     await saveToNotion(selected);
 
     console.log("Done!", selected);
